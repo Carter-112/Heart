@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Layered Glow Heart</title>
+  <title>Layered Glow Heart (2× Scaled)</title>
   <style>
     /* Fill window, hide scrollbars, black bg */
     html, body {
@@ -81,7 +81,8 @@
   function spawnMiniHeart() {
     const x = Math.random() * canvas.width;
     const y = canvas.height + 30;
-    const size = 10 + Math.random() * 15;
+    // Scale mini-heart size 2×: previously 10 + rand*15 becomes 20 + rand*30.
+    const size = 20 + Math.random() * 30; 
     const speed = 1 + Math.random() * 2;
     const alpha = 0.8 + Math.random() * 0.2;
     miniHearts.push({ x, y, size, speed, alpha });
@@ -143,8 +144,8 @@
   // Precompute bounding box
   let minX =  9999, maxX = -9999;
   let minY =  9999, maxY = -9999;
-  for (let i=0; i<=200; i++){
-    const angle = 2*Math.PI*(i/200);
+  for (let i = 0; i <= 200; i++){
+    const angle = 2 * Math.PI * (i / 200);
     const pt = heartXY(angle);
     if (pt.x < minX) minX = pt.x;
     if (pt.x > maxX) maxX = pt.x;
@@ -154,12 +155,14 @@
   const boxWidth  = maxX - minX;
   const boxHeight = maxY - minY;
 
+  // To scale the heart, we initially compute a scale so that the heart’s bounding box
+  // is at most 60% of the canvas width and 360px tall, then multiply that scale by 2.
   function computeFinalScale() {
-    const desiredWidth  = canvas.width * 0.6; 
-    const desiredHeight = 360; 
-    const scaleW = desiredWidth  / boxWidth;
+    const desiredWidth  = canvas.width * 0.6;
+    const desiredHeight = 360;
+    const scaleW = desiredWidth / boxWidth;
     const scaleH = desiredHeight / boxHeight;
-    return Math.min(scaleW, scaleH);
+    return 2 * Math.min(scaleW, scaleH);   // Multiply by 2 for 2x scaling
   }
 
   /*********************************************************
@@ -175,23 +178,19 @@
   function computeScaledBounds(scale) {
     const scaledMinY = minY * scale;
     const scaledMaxY = maxY * scale;
-    topOfHeart = scaledMinY; 
+    topOfHeart = scaledMinY;
     botOfHeart = scaledMaxY;
   }
 
   // partialBeat fraction: returns [partialMin..1], going down/up
   function partialBeatProgress(elapsedMs) {
-    // each cycle = partialBeatPeriod
-    // half the time => 1..partialMin, half => partialMin..1
-    const cyclePos = (elapsedMs % partialBeatPeriod) / partialBeatPeriod; 
+    const cyclePos = (elapsedMs % partialBeatPeriod) / partialBeatPeriod;
     if (cyclePos < 0.5) {
-      // down
-      const fractionDown = cyclePos / 0.5; 
-      return 1 - (1 - partialMin)* fractionDown;
+      const fractionDown = cyclePos / 0.5;
+      return 1 - (1 - partialMin) * fractionDown;
     } else {
-      // up
-      const fractionUp = (cyclePos - 0.5) / 0.5; 
-      return partialMin + (1 - partialMin)* fractionUp;
+      const fractionUp = (cyclePos - 0.5) / 0.5;
+      return partialMin + (1 - partialMin) * fractionUp;
     }
   }
 
@@ -199,35 +198,28 @@
    * 7) Glow & Transparency per Layer
    *********************************************************/
   function applyLayerGlow(i, heartFrac) {
-    // bigger glow when heartFrac < 0.5, less glow near full
-    // also depends on i => outer layers = bigger blur
-    const baseBlur = 3 + i * 0.8; 
-    const pulseFactor = (1 - heartFrac) * 15; 
+    const baseBlur = 3 + i * 0.8;
+    const pulseFactor = (1 - heartFrac) * 15;
     const finalBlur = baseBlur + pulseFactor;
 
     ctx.shadowColor = 'rgba(255, 0, 0, 0.4)';
     ctx.shadowBlur  = finalBlur;
 
-    // partial alpha: top layers more transparent
-    // i=0 => alpha=1, i=(N-1)=> alpha=0.5
-    const layerAlpha = 1 - i*(0.5/N);
-    // If heartFrac < .2 => even more see-through
-    const extra = (heartFrac < 0.2)? 0.6: 1.0;
+    const layerAlpha = 1 - i * (0.5 / N);
+    const extra = (heartFrac < 0.2) ? 0.6 : 1.0;
     ctx.globalAlpha *= layerAlpha * extra;
   }
 
   /*********************************************************
    * 8) Main Draw Logic: 2-Phase fill
    *********************************************************/
-  // Declare startTime only ONCE
   const startTime = performance.now();
 
   function drawHeartAndText(elapsed) {
     if (elapsed <= firstFillDuration) {
-      // Phase A: first fill (0->1)
       const heartFrac = elapsed / firstFillDuration;
       if (!textFullyVisible && heartFrac >= textAppearThreshold) {
-        let fadeFrac = (heartFrac - textAppearThreshold)/(1 - textAppearThreshold);
+        let fadeFrac = (heartFrac - textAppearThreshold) / (1 - textAppearThreshold);
         if (fadeFrac > 1) fadeFrac = 1;
         textFadeProgress = fadeFrac;
         if (fadeFrac >= 1) {
@@ -237,7 +229,6 @@
       }
       drawHeartAndTextCore(heartFrac, textFadeProgress);
     } else {
-      // Phase B: partial beats
       const partialMs = elapsed - firstFillDuration;
       const beatFrac  = partialBeatProgress(partialMs);
       if (!textFullyVisible) {
@@ -252,36 +243,32 @@
    * 9) drawHeartAndTextCore(heartFrac, textAlpha)
    *********************************************************/
   function drawHeartAndTextCore(heartFrac, textAlpha) {
-    // final scale
     const finalScale = computeFinalScale();
     computeScaledBounds(finalScale);
 
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    // Draw heart outlines
     ctx.save();
     const perOutline = 1 / N;
-    for (let i=0; i<N; i++){
+    for (let i = 0; i < N; i++) {
       ctx.save();
-      // unique glow for each layer
       applyLayerGlow(i, heartFrac);
 
       ctx.strokeStyle = "red";
       ctx.lineWidth   = 2;
 
-      // figure out fraction for outline i
       const startFrac = i * perOutline;
-      const endFrac   = (i+1)*perOutline;
-      let localT = (heartFrac - startFrac)/(endFrac - startFrac);
+      const endFrac = (i + 1) * perOutline;
+      let localT = (heartFrac - startFrac) / (endFrac - startFrac);
       if (localT < 0) {
         ctx.restore();
         continue;
       }
       if (localT > 1) localT = 1;
 
-      const direction = (i % 2 === 0)? 1 : -1;
-      const outlineSize = finalScale * ((i+1)/N);
+      const direction = (i % 2 === 0) ? 1 : -1;
+      const outlineSize = finalScale * ((i + 1) / N);
 
       ctx.translate(cx, cy);
       drawPartialOutline(localT, outlineSize, direction);
@@ -290,19 +277,18 @@
     }
     ctx.restore();
 
-    // Now draw text
     ctx.save();
-    ctx.globalAlpha = textAlpha; 
-    ctx.fillStyle   = "white";
-    ctx.font        = "bold 40px Arial";
-    ctx.textAlign   = "center";
+    ctx.globalAlpha = textAlpha;
+    ctx.fillStyle = "white";
+    // Double text size: change font from 40px to 80px.
+    ctx.font = "bold 80px Arial";
+    ctx.textAlign = "center";
 
-    // Even spacing from top/bottom
-    const offset = 50;
+    const offset = 100; // double the offset from 50 to 100
     const topY = cy + topOfHeart;
     const botY = cy + botOfHeart;
     const carterY = topY - offset;
-    const mattY   = botY + offset;
+    const mattY = botY + offset;
 
     ctx.textBaseline = "bottom";
     ctx.fillText("Carter", cx, carterY);
@@ -321,17 +307,17 @@
     const steps = 60;
     let old = scaledHeartPoint(0, scale, direction);
     ctx.moveTo(old.x, old.y);
-    for (let i=1; i<=steps; i++){
-      const frac = (i/steps) * progress;
-      const pt   = scaledHeartPoint(frac, scale, direction);
+    for (let i = 1; i <= steps; i++){
+      const frac = (i / steps) * progress;
+      const pt = scaledHeartPoint(frac, scale, direction);
       ctx.lineTo(pt.x, pt.y);
     }
     ctx.stroke();
   }
 
   function scaledHeartPoint(u, scale, direction) {
-    const angle = direction * 2*Math.PI * u;
-    const base  = heartXY(angle);
+    const angle = direction * 2 * Math.PI * u;
+    const base = heartXY(angle);
     return { x: base.x * scale, y: base.y * scale };
   }
 
@@ -342,23 +328,22 @@
     const now = performance.now();
     const elapsed = now - startTime;
 
-    // a) background
+    // a) Draw moving background
     drawBackground(elapsed);
 
-    // b) floating hearts
+    // b) Floating mini-hearts
     if (Math.random() < 0.06) {
       spawnMiniHeart();
     }
     updateMiniHearts();
     drawMiniHearts();
 
-    // c) heart phases + text
+    // c) Heart phases + text
     drawHeartAndText(elapsed);
 
     requestAnimationFrame(animate);
   }
 
-  // **Run the animation** right after we set everything up
   animate();
 
 })();
