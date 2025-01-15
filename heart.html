@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Layered Glow Heart</title>
+  <style>
+    /* Fill window, hide scrollbars, black bg */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+    }
+  </style>
+</head>
+<body>
+
+<script>
+(function(){
+
+  /*********************************************************
+   * 1) Configurable Durations
+   *********************************************************/
+  // (A) First fill: 0..100% from empty->full in 1s
+  const firstFillDuration = 1000;  // 1 second
+
+  // (B) Partial beat after full: 100%->5%->100% repeated in 1.5s cycles
+  const partialBeatPeriod = 1500;  
+  const partialMin = 0.05;         // go down to 5%
+
+  // Show text once heart passes 75% on the first fill
+  const textAppearThreshold = 0.75;
+
+  // Number of nested outlines
+  const N = 20;
+
+  /*********************************************************
+   * 2) Canvas Setup
+   *********************************************************/
+  const canvas = document.createElement('canvas');
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  /*********************************************************
+   * 3) Very Cool Moving Background
+   *********************************************************/
+  function drawBackground(elapsed) {
+    const t = elapsed * 0.0002; // speed factor for shifting center
+    const centerX = canvas.width / 2 + Math.sin(t) * 200;
+    const centerY = canvas.height / 2 + Math.cos(t * 1.3) * 200;
+
+    // rotating color hues
+    const baseHue = (elapsed * 0.05) % 360;
+    const hue2    = (baseHue + 120) % 360;
+    const hue3    = (baseHue + 240) % 360;
+
+    const maxDim  = Math.max(canvas.width, canvas.height);
+    const grad    = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxDim);
+    grad.addColorStop(0.0, `hsl(${baseHue}, 80%, 50%)`);
+    grad.addColorStop(0.5, `hsl(${hue2}, 80%, 50%)`);
+    grad.addColorStop(1.0, `hsl(${hue3}, 80%, 50%)`);
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  /*********************************************************
+   * 4) Floating Red Mini-Hearts
+   *********************************************************/
+  let miniHearts = [];
+
+  function spawnMiniHeart() {
+    const x = Math.random() * canvas.width;
+    const y = canvas.height + 30;
+    const size = 10 + Math.random() * 15;
+    const speed = 1 + Math.random() * 2;
+    const alpha = 0.8 + Math.random() * 0.2;
+    miniHearts.push({ x, y, size, speed, alpha });
+  }
+
+  function updateMiniHearts() {
+    for (let i = miniHearts.length - 1; i >= 0; i--) {
+      miniHearts[i].y -= miniHearts[i].speed;
+      miniHearts[i].alpha -= 0.002;
+      if (miniHearts[i].y < -50 || miniHearts[i].alpha <= 0) {
+        miniHearts.splice(i, 1);
+      }
+    }
+  }
+
+  function drawMiniHearts() {
+    ctx.save();
+    ctx.fillStyle = "#FF3030";
+    miniHearts.forEach(heart => {
+      ctx.globalAlpha = heart.alpha;
+      drawSmallHeart(heart.x, heart.y, heart.size);
+    });
+    ctx.restore();
+  }
+
+  function drawSmallHeart(x, y, size) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - size / 2);
+    ctx.bezierCurveTo(
+      x - size * 0.3, y - size * 0.9,
+      x - size,       y - size * 0.2,
+      x,              y + size * 0.2
+    );
+    ctx.bezierCurveTo(
+      x + size,       y - size * 0.2,
+      x + size * 0.3, y - size * 0.9,
+      x,              y - size / 2
+    );
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /*********************************************************
+   * 5) Heart Param => x=1*(sin³(θ))
+   *********************************************************/
+  function heartXY(theta) {
+    const sinT = Math.sin(theta);
+    const cosT = Math.cos(theta);
+    const x = 1 * (sinT ** 3); 
+    const y = -(
+      13*cosT 
+      - 5*Math.cos(2*theta)
+      - 2*Math.cos(3*theta)
+      - Math.cos(4*theta)
+    ) / 16;
+    return { x, y };
+  }
+
+  // Precompute bounding box
+  let minX =  9999, maxX = -9999;
+  let minY =  9999, maxY = -9999;
+  for (let i=0; i<=200; i++){
+    const angle = 2*Math.PI*(i/200);
+    const pt = heartXY(angle);
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  const boxWidth  = maxX - minX;
+  const boxHeight = maxY - minY;
+
+  function computeFinalScale() {
+    const desiredWidth  = canvas.width * 0.6; 
+    const desiredHeight = 360; 
+    const scaleW = desiredWidth  / boxWidth;
+    const scaleH = desiredHeight / boxHeight;
+    return Math.min(scaleW, scaleH);
+  }
+
+  /*********************************************************
+   * 6) 2-Phase Heart Animation
+   *********************************************************/
+  let textFullyVisible = false;
+  let textFadeProgress = 0;
+
+  // For text placement
+  let topOfHeart = 0;
+  let botOfHeart = 0;
+
+  function computeScaledBounds(scale) {
+    const scaledMinY = minY * scale;
+    const scaledMaxY = maxY * scale;
+    topOfHeart = scaledMinY; 
+    botOfHeart = scaledMaxY;
+  }
+
+  // partialBeat fraction: returns [partialMin..1], going down/up
+  function partialBeatProgress(elapsedMs) {
+    // each cycle = partialBeatPeriod
+    // half the time => 1..partialMin, half => partialMin..1
+    const cyclePos = (elapsedMs % partialBeatPeriod) / partialBeatPeriod; 
+    if (cyclePos < 0.5) {
+      // down
+      const fractionDown = cyclePos / 0.5; 
+      return 1 - (1 - partialMin)* fractionDown;
+    } else {
+      // up
+      const fractionUp = (cyclePos - 0.5) / 0.5; 
+      return partialMin + (1 - partialMin)* fractionUp;
+    }
+  }
+
+  /*********************************************************
+   * 7) Glow & Transparency per Layer
+   *********************************************************/
+  function applyLayerGlow(i, heartFrac) {
+    // bigger glow when heartFrac < 0.5, less glow near full
+    // also depends on i => outer layers = bigger blur
+    const baseBlur = 3 + i * 0.8; 
+    const pulseFactor = (1 - heartFrac) * 15; 
+    const finalBlur = baseBlur + pulseFactor;
+
+    ctx.shadowColor = 'rgba(255, 0, 0, 0.4)';
+    ctx.shadowBlur  = finalBlur;
+
+    // partial alpha: top layers more transparent
+    // i=0 => alpha=1, i=(N-1)=> alpha=0.5
+    const layerAlpha = 1 - i*(0.5/N);
+    // If heartFrac < .2 => even more see-through
+    const extra = (heartFrac < 0.2)? 0.6: 1.0;
+    ctx.globalAlpha *= layerAlpha * extra;
+  }
+
+  /*********************************************************
+   * 8) Main Draw Logic: 2-Phase fill
+   *********************************************************/
+  // Declare startTime only ONCE
+  const startTime = performance.now();
+
+  function drawHeartAndText(elapsed) {
+    if (elapsed <= firstFillDuration) {
+      // Phase A: first fill (0->1)
+      const heartFrac = elapsed / firstFillDuration;
+      if (!textFullyVisible && heartFrac >= textAppearThreshold) {
+        let fadeFrac = (heartFrac - textAppearThreshold)/(1 - textAppearThreshold);
+        if (fadeFrac > 1) fadeFrac = 1;
+        textFadeProgress = fadeFrac;
+        if (fadeFrac >= 1) {
+          textFullyVisible = true;
+          textFadeProgress = 1;
+        }
+      }
+      drawHeartAndTextCore(heartFrac, textFadeProgress);
+    } else {
+      // Phase B: partial beats
+      const partialMs = elapsed - firstFillDuration;
+      const beatFrac  = partialBeatProgress(partialMs);
+      if (!textFullyVisible) {
+        textFullyVisible = true;
+        textFadeProgress = 1;
+      }
+      drawHeartAndTextCore(beatFrac, textFadeProgress);
+    }
+  }
+
+  /*********************************************************
+   * 9) drawHeartAndTextCore(heartFrac, textAlpha)
+   *********************************************************/
+  function drawHeartAndTextCore(heartFrac, textAlpha) {
+    // final scale
+    const finalScale = computeFinalScale();
+    computeScaledBounds(finalScale);
+
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    // Draw heart outlines
+    ctx.save();
+    const perOutline = 1 / N;
+    for (let i=0; i<N; i++){
+      ctx.save();
+      // unique glow for each layer
+      applyLayerGlow(i, heartFrac);
+
+      ctx.strokeStyle = "red";
+      ctx.lineWidth   = 2;
+
+      // figure out fraction for outline i
+      const startFrac = i * perOutline;
+      const endFrac   = (i+1)*perOutline;
+      let localT = (heartFrac - startFrac)/(endFrac - startFrac);
+      if (localT < 0) {
+        ctx.restore();
+        continue;
+      }
+      if (localT > 1) localT = 1;
+
+      const direction = (i % 2 === 0)? 1 : -1;
+      const outlineSize = finalScale * ((i+1)/N);
+
+      ctx.translate(cx, cy);
+      drawPartialOutline(localT, outlineSize, direction);
+
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Now draw text
+    ctx.save();
+    ctx.globalAlpha = textAlpha; 
+    ctx.fillStyle   = "white";
+    ctx.font        = "bold 40px Arial";
+    ctx.textAlign   = "center";
+
+    // Even spacing from top/bottom
+    const offset = 50;
+    const topY = cy + topOfHeart;
+    const botY = cy + botOfHeart;
+    const carterY = topY - offset;
+    const mattY   = botY + offset;
+
+    ctx.textBaseline = "bottom";
+    ctx.fillText("Carter", cx, carterY);
+
+    ctx.textBaseline = "top";
+    ctx.fillText("Matt", cx, mattY);
+
+    ctx.restore();
+  }
+
+  /*********************************************************
+   * 10) drawPartialOutline
+   *********************************************************/
+  function drawPartialOutline(progress, scale, direction) {
+    ctx.beginPath();
+    const steps = 60;
+    let old = scaledHeartPoint(0, scale, direction);
+    ctx.moveTo(old.x, old.y);
+    for (let i=1; i<=steps; i++){
+      const frac = (i/steps) * progress;
+      const pt   = scaledHeartPoint(frac, scale, direction);
+      ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+  }
+
+  function scaledHeartPoint(u, scale, direction) {
+    const angle = direction * 2*Math.PI * u;
+    const base  = heartXY(angle);
+    return { x: base.x * scale, y: base.y * scale };
+  }
+
+  /*********************************************************
+   * 11) Main Animation
+   *********************************************************/
+  function animate() {
+    const now = performance.now();
+    const elapsed = now - startTime;
+
+    // a) background
+    drawBackground(elapsed);
+
+    // b) floating hearts
+    if (Math.random() < 0.06) {
+      spawnMiniHeart();
+    }
+    updateMiniHearts();
+    drawMiniHearts();
+
+    // c) heart phases + text
+    drawHeartAndText(elapsed);
+
+    requestAnimationFrame(animate);
+  }
+
+  // **Run the animation** right after we set everything up
+  animate();
+
+})();
+</script>
+
+</body>
+</html>
