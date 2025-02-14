@@ -249,9 +249,9 @@
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
   
-    // Draw heart outlines with blur
+    // Draw heart outlines with increased blur
     ctx.save();
-    ctx.filter = "blur(2px)";  // <-- Change the blur amount here as needed
+    ctx.filter = "blur(2px)";  // <-- Changed from "blur(20px)" to double the blur amount
     const perOutline = 1 / N;
     for (let i = 0; i < N; i++) {
       ctx.save();
