@@ -242,22 +242,24 @@
   /*********************************************************
    * 9) drawHeartAndTextCore(heartFrac, textAlpha)
    *********************************************************/
-  function drawHeartAndTextCore(heartFrac, textAlpha) {
+    function drawHeartAndTextCore(heartFrac, textAlpha) {
     const finalScale = computeFinalScale();
     computeScaledBounds(finalScale);
-
+  
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
-
+  
+    // Draw heart outlines with blur
     ctx.save();
+    ctx.filter = "blur(2px)";  // <-- Change the blur amount here as needed
     const perOutline = 1 / N;
     for (let i = 0; i < N; i++) {
       ctx.save();
       applyLayerGlow(i, heartFrac);
-
+  
       ctx.strokeStyle = "red";
       ctx.lineWidth   = 2;
-
+  
       const startFrac = i * perOutline;
       const endFrac = (i + 1) * perOutline;
       let localT = (heartFrac - startFrac) / (endFrac - startFrac);
@@ -266,36 +268,36 @@
         continue;
       }
       if (localT > 1) localT = 1;
-
+  
       const direction = (i % 2 === 0) ? 1 : -1;
       const outlineSize = finalScale * ((i + 1) / N);
-
+  
       ctx.translate(cx, cy);
       drawPartialOutline(localT, outlineSize, direction);
-
+  
       ctx.restore();
     }
     ctx.restore();
-
+  
+    // Draw text normally (without blur)
     ctx.save();
     ctx.globalAlpha = textAlpha;
     ctx.fillStyle = "white";
-    // Double text size: change font from 40px to 80px.
     ctx.font = "bold 80px Arial";
     ctx.textAlign = "center";
-
-    const offset = 100; // double the offset from 50 to 100
+  
+    const offset = 100;
     const topY = cy + topOfHeart;
     const botY = cy + botOfHeart;
     const carterY = topY - offset;
     const mattY = botY + offset;
-
+  
     ctx.textBaseline = "bottom";
     ctx.fillText("Carter", cx, carterY);
-
+  
     ctx.textBaseline = "top";
     ctx.fillText("Matt", cx, mattY);
-
+  
     ctx.restore();
   }
 
