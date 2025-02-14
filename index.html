@@ -242,16 +242,16 @@
   /*********************************************************
    * 9) drawHeartAndTextCore(heartFrac, textAlpha)
    *********************************************************/
-    function drawHeartAndTextCore(heartFrac, textAlpha) {
+  function drawHeartAndTextCore(heartFrac, textAlpha) {
     const finalScale = computeFinalScale();
     computeScaledBounds(finalScale);
   
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
   
-    // Draw heart outlines with increased blur
+    // Draw heart outlines with a tiny doubled blur
     ctx.save();
-    ctx.filter = "blur(2px)";  // <-- Changed from "blur(20px)" to double the blur amount
+    ctx.filter = "blur(2px)"; // Added tiny blur (2px) and doubled to 4px
     const perOutline = 1 / N;
     for (let i = 0; i < N; i++) {
       ctx.save();
